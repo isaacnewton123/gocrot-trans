@@ -2,42 +2,61 @@ import { config } from "./config.js";
 import { sanitizeDraft, type Draft } from "./draft.js";
 import { GEMINI_TEXT_MODELS, GROQ_CHAT_MODELS, modelChain } from "./models.js";
 
-const ATTEMPT_MS = 12_000;
+const ATTEMPT_MS = 6_000;
+const COOLDOWN_MS = 2 * 60 * 1000;
+let geminiCooldownUntil = 0;
+const modelCooldown = new Map<string, number>();
 
-const INSTRUCTIONS = `Anda mengekstrak data perjalanan taksi dari chat pengemudi berbahasa Indonesia.
-Balas HANYA dengan JSON. Tanpa prosa, tanpa markdown.
+const INSTRUCTIONS = `Anda adalah asisten AI GOCROT TRANS yang ramah, santai, hangat, dan membantu pengemudi mencatat kwitansi perjalanan di WhatsApp.
+Balas HANYA dengan JSON murni sesuai skema di bawah (tanpa markdown, tanpa teks di luar JSON).
 
-Bentuk JSON:
+Skema Output JSON:
 {
   "origin": string | null,
+  "originShort": string | null,
   "destination": string | null,
+  "destinationShort": string | null,
+  "receivedFrom": string | null,
+  "paymentLine1": string | null,
+  "paymentLine2": string | null,
+  "paymentMethod": "cash" | "transfer",
   "total": integer | null,
-  "breakdown": {
-    "tol": integer | null,
-    "bensin": integer | null,
-    "parkir": integer | null,
-    "lain": integer | null
-  },
+  "breakdown": { "tol": integer | null, "bensin": integer | null, "parkir": integer | null, "lain": integer | null },
   "confidence": "high" | "medium" | "low",
-  "missing": ["origin" | "destination" | "total"],
+  "missing": ["receivedFrom" | "origin" | "destination" | "total"],
   "question": string | null
 }
 
-Aturan:
-- Uang disimpan sebagai integer Rupiah, tanpa desimal dan tanpa simbol.
-- Arti singkatan: 700rb, 700 ribu = 700000. 700k = 700000. 1,5jt, 1.5jt, 1,5 juta = 1500000. 2jt = 2000000. 50k = 50000. Angka polos 700000 tetap 700000.
-- Jika hanya tertulis "700" tanpa satuan dan konteksnya ambigu, total = null, confidence = "low", dan "total" ada di missing.
-- Jangan mengarang nominal. Uang yang tidak disebut = null.
-- Typo, bahasa gaul, dan urutan kata yang berantakan boleh ditafsirkan kalau maksudnya jelas.
-- Rapikan tata bahasa dan ejaan. Nama tempat ditulis dengan nama resminya, bukan salinan mentah. Contoh: "terminal 1 soekarno hatta" menjadi "Terminal 1 Bandara Internasional Soekarno-Hatta". "pool primajasa cikopo" menjadi "Pool Bus Primajasa Cikopo".
-- Kalau satu nama punya banyak lokasi dan pengemudi belum memilih yang mana, field itu = null, masukkan ke missing, confidence = "low", dan question menanyakan lokasi yang dimaksud.
-- Kalau nama tempat tidak bisa dipastikan, jangan mengarang alamat atau jalan. Field itu = null dan question meminta pengemudi membagikan lokasi lewat WhatsApp: Lampirkan, lalu Lokasi.
-- Pesan yang diawali "[lokasi WhatsApp]" adalah pin pengemudi. Salin nama, nama jalan, kota atau kabupaten, dan kode pos ke field yang sedang ditanyakan. Desa dan kecamatan tidak wajib. Jangan membuang jalan atau kode pos. Jangan menolak pin hanya karena desa atau kecamatannya tidak ada.
-- Jangan mengeluarkan nomor seri.
-- missing wajib berisi setiap field wajib yang nilainya null.
-- confidence high kalau tiga field wajib jelas. medium kalau ada ejaan yang ditebak. low kalau ada yang ambigu.
-- breakdown hanya diisi kalau pengemudi menyebutkannya. Jangan menyeimbangkan angka dengan mengarang.
-- Gabungkan seluruh pesan di bawah ini menjadi satu draf perjalanan. Pesan yang lebih baru memperbaiki pesan sebelumnya.`;
+ATURAN UTAMA (WAJIB DIIKUTI 100%):
+1. PRINSIP NOL ASUMSI & WAJIB SHARELOC SATU PER SATU:
+   - Lokasi penjemputan ("origin") dan lokasi tujuan ("destination") WAJIB berasal dari Shareloc / Link Google Maps yang ditandai dengan "[SHARELOK JEMPUT RESMI]: ..." dan "[SHARELOK TUJUAN RESMI]: ..." di riwayat chat.
+   - Jika di riwayat chat BELUM ADA "[SHARELOK JEMPUT RESMI]: ...", maka "origin" WAJIB diisi null (walaupun pengemudi sudah menulis nama tempat jemput lewat teks!).
+   - Jika di riwayat chat BELUM ADA "[SHARELOK TUJUAN RESMI]: ...", maka "destination" WAJIB diisi null (walaupun pengemudi sudah menulis nama tempat tujuan lewat teks!).
+   - Jika "[SHARELOK JEMPUT RESMI]: <alamat>" SUDAH ADA, salin utuh alamat lengkap beserta jalan dan kode posnya ke "origin". Jika sebelumnya pengemudi sempat menyebut nama tempat/gedung jemput lewat teks yang belum tertulis di awal shareloc tersebut, gabungkan nama tempat itu di depan alamat shareloc-nya.
+   - Jika "[SHARELOK TUJUAN RESMI]: <alamat>" SUDAH ADA, salin utuh alamat lengkap beserta jalan dan kode posnya ke "destination". Jika sebelumnya pengemudi sempat menyebut nama tempat/gedung tujuan lewat teks yang belum tertulis di awal shareloc tersebut, gabungkan nama tempat itu di depan alamat shareloc-nya.
+
+2. DATA WAJIB LAINNYA:
+   - "receivedFrom": Nama penumpang atau instansi/perusahaan penyewa. Jika belum disebut oleh pengemudi, wajib isi null (jangan mengarang).
+   - "total": Total tarif dalam integer Rupiah murni (contoh: 150k / 150rb = 150000, 1,5jt = 1500000). Jika belum disebut atau ambigu, wajib isi null.
+   - "originShort" & "destinationShort": versi ringkas "<Nama Tempat>, <Kota>" (maksimal 50 karakter, tanpa kode pos) hanya jika "origin" / "destination" sudah tidak null.
+   - "paymentLine1": deskripsi layanan singkat (default: "Layanan Jasa Transportasi Perjalanan").
+   - "paymentLine2": "Rute <originShort> — <destinationShort>" jika keduanya sudah tidak null; selain itu null.
+   - "paymentMethod": isi "transfer" jika pengemudi menyebut transfer/tf/qris/bank; selain itu "cash".
+   - "breakdown": isi tol/bensin/parkir/lain hanya jika disebut eksplisit oleh pengemudi.
+
+3. URUTAN BERTANYA SATU PER SATU & GAYA BAHASA AI DI "question" (SANGAT PENTING):
+   - "missing" wajib berisi setiap field dari ["receivedFrom", "origin", "destination", "total"] yang nilainya masih null.
+   - Jika keempat field wajib sudah terisi lengkap (semua tidak null), maka "missing" = [] dan "question" = null.
+   - Jika masih ada yang null, tulis "question" dengan gaya ngobrol AI yang SANGAT RAMAH, hangat, luwes seperti teman/asisten pribadi (JANGAN kaku seperti bot/formulir!), kalimatnya pendek & enak dibaca (1–2 kalimat saja), dan WAJIB memakai emoji yang relevan (seperti 😊, 👋, 📍, 🚗, ✨, ✅, 📝, 🙌).
+   - Urutan meminta data di "question" agar pengemudi tidak bingung:
+     a) Jika keempat field ("origin", "destination", "receivedFrom", "total") masih null (misal pengemudi baru menyapa atau minta buat kwitansi baru):
+        Sapa dengan ramah & ceria, lalu minta pengemudi mengirimkan **shareloc (atau link Google Maps) titik penjemputannya** terlebih dahulu 📍🚗. JANGAN PERNAH bilang sudah mencatat nama atau tarif kalau "receivedFrom" / "total" masih null!
+     b) Jika "origin" (Shareloc Jemput) masih null (tetapi "receivedFrom" atau "total" benar-benar sudah tidak null):
+        Minta pengemudi mengirimkan **shareloc (atau link Google Maps) titik penjemputan** terlebih dahulu 📍.
+     c) Jika "origin" SUDAH terisi, tapi "destination" (Shareloc Tujuan) masih null:
+        Katakan dengan ramah bahwa titik jemputnya sudah masuk ✅📍, lalu minta pengemudi mengirimkan **shareloc (atau link Google Maps) untuk lokasi tujuannya** 🚗.
+     d) Jika "origin" dan "destination" SUDAH terisi, tapi "receivedFrom" atau "total" masih null:
+        Katakan titik rutenya sudah lengkap, tinggal tanyakan nama penumpang dan/atau total tarifnya dengan ramah 😊.`;
 
 export async function extractTrip(messages: string[]): Promise<Draft> {
   if (!config.geminiKey && !config.groqKey) {
@@ -45,26 +64,69 @@ export async function extractTrip(messages: string[]): Promise<Draft> {
   }
   const transcript = messages.map((message, index) => `${index + 1}. ${message}`).join("\n");
   const prompt = `${INSTRUCTIONS}\n\nPesan pengemudi:\n${transcript}`;
-  const raw = await complete(prompt);
-  return sanitizeDraft(raw);
+  return completeDraft(prompt);
 }
 
-async function complete(prompt: string): Promise<string> {
+export async function generateCancelReply(userText: string): Promise<string> {
+  const prompt = `Pengemudi GOCROT TRANS mengirim pesan pembatalan pembuatan kwitansi: "${userText}".
+Balas dengan JSON murni: {"reply": "..."}
+Isi "reply" dengan 1 kalimat pendek berbahasa Indonesia yang ramah, santai, hangat seperti ngobrol dengan AI (pakai 1-2 emoji seperti 😊🙏👍), yang mengonfirmasi bahwa draf kwitansi tadi sudah dibatalkan dan siap membantu lagi kapan saja tanpa menanyakan data apa pun.`;
+  try {
+    const raw = await completeRawJson(prompt);
+    const parsed = JSON.parse(raw) as { reply?: unknown };
+    if (typeof parsed.reply === "string" && parsed.reply.trim()) {
+      return parsed.reply.trim();
+    }
+  } catch {
+    // fallback if offline
+  }
+  return "Siap Kak, pembuatan kwitansinya sudah saya batalkan ya! 😊🙏 Kalau nanti mau buat lagi, tinggal kabari aja ya 🚗✨";
+}
+
+async function completeRawJson(prompt: string): Promise<string> {
+  const now = Date.now();
+  if (config.geminiKey && now >= geminiCooldownUntil) {
+    const model = config.geminiModel || GEMINI_TEXT_MODELS[0];
+    try {
+      return await gemini(prompt, model);
+    } catch {
+      geminiCooldownUntil = Date.now() + COOLDOWN_MS;
+    }
+  }
+  if (config.groqKey) {
+    const model = config.groqModel || GROQ_CHAT_MODELS[0];
+    return await groq(prompt, model);
+  }
+  throw new Error("AI_FAILED");
+}
+
+async function completeDraft(prompt: string): Promise<Draft> {
   const errors: string[] = [];
-  if (config.geminiKey) {
-    const models = modelChain(
+  const now = Date.now();
+  if (config.geminiKey && Date.now() >= geminiCooldownUntil) {
+    const allGemini = modelChain(
       config.geminiModel,
       config.geminiModels.length ? config.geminiModels : GEMINI_TEXT_MODELS,
-    );
-    for (const model of models) {
+    ).filter((m) => (modelCooldown.get(m) ?? 0) < now);
+    const geminiCandidates = config.groqKey ? allGemini.slice(0, 1) : allGemini;
+    for (const model of geminiCandidates) {
       try {
         const text = await gemini(prompt, model);
+        const draft = sanitizeDraft(text);
+        if (isBlankDraft(draft)) {
+          throw new Error(`Gemini ${model} menghasilkan JSON tanpa isi`);
+        }
         console.log(`[ai] Gemini ${model}`);
-        return text;
+        return draft;
       } catch (error) {
         const message = errorText(error);
         console.error(`[ai] Gemini ${model} gagal: ${message}`);
         errors.push(message);
+        modelCooldown.set(model, Date.now() + COOLDOWN_MS);
+        if (config.groqKey) {
+          geminiCooldownUntil = Date.now() + COOLDOWN_MS;
+          break;
+        }
         if (isFatalAuth(message)) break;
       }
     }
@@ -73,21 +135,36 @@ async function complete(prompt: string): Promise<string> {
     const models = modelChain(
       config.groqModel,
       config.groqModels.length ? config.groqModels : GROQ_CHAT_MODELS,
-    );
-    for (const model of models) {
+    ).filter((m) => (modelCooldown.get(m) ?? 0) < now);
+    for (const model of models.length ? models : GROQ_CHAT_MODELS) {
       try {
         const text = await groq(prompt, model);
+        const draft = sanitizeDraft(text);
+        if (isBlankDraft(draft)) {
+          throw new Error(`Groq ${model} menghasilkan JSON tanpa isi`);
+        }
         console.log(`[ai] Groq ${model}`);
-        return text;
+        return draft;
       } catch (error) {
         const message = errorText(error);
         console.error(`[ai] Groq ${model} gagal: ${message}`);
         errors.push(message);
+        modelCooldown.set(model, Date.now() + COOLDOWN_MS);
         if (isFatalAuth(message)) break;
       }
     }
   }
   throw new Error(errors.at(-1) || "AI_FAILED");
+}
+
+function isBlankDraft(draft: Draft): boolean {
+  return (
+    !draft.origin &&
+    !draft.destination &&
+    !draft.receivedFrom &&
+    draft.total == null &&
+    !draft.question
+  );
 }
 
 async function gemini(prompt: string, model: string): Promise<string> {
@@ -118,9 +195,12 @@ async function geminiOnce(prompt: string, model: string, jsonMode: boolean): Pro
     throw new Error(`Gemini ${response.status}: ${(await response.text()).slice(0, 300)}`);
   }
   const json = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
   };
-  const text = json.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+  const parts = json.candidates?.[0]?.content?.parts ?? [];
+  const nonThought = parts.filter((part) => !part.thought);
+  const activeParts = nonThought.length > 0 ? nonThought : parts;
+  const text = activeParts.map((part) => part.text ?? "").join("");
   if (!text.trim()) throw new Error(`Gemini ${model} mengembalikan jawaban kosong`);
   return text;
 }

@@ -1,9 +1,22 @@
+import {
+  derivePaymentLine1,
+  derivePaymentLine2,
+  deriveShortPlace,
+} from "./receipt.js";
+
 export type MoneyField = "tol" | "bensin" | "parkir" | "lain";
-export type RequiredField = "origin" | "destination" | "total";
+export type RequiredField = "receivedFrom" | "origin" | "destination" | "total";
+export type PaymentMethod = "cash" | "transfer";
 
 export type Draft = {
   origin: string | null;
+  originShort: string | null;
   destination: string | null;
+  destinationShort: string | null;
+  receivedFrom: string | null;
+  paymentLine1: string | null;
+  paymentLine2: string | null;
+  paymentMethod: PaymentMethod;
   total: number | null;
   breakdown: Record<MoneyField, number | null>;
   confidence: "high" | "medium" | "low";
@@ -23,6 +36,18 @@ export function sanitizeDraft(raw: string): Draft {
   const parsed = parseJson(raw);
   const origin = cleanPlace(parsed.origin);
   const destination = cleanPlace(parsed.destination);
+  const originShort = cleanShortPlace(parsed.originShort) ?? (origin ? deriveShortPlace(origin) : null);
+  const destinationShort =
+    cleanShortPlace(parsed.destinationShort) ?? (destination ? deriveShortPlace(destination) : null);
+
+  const receivedFrom = cleanPassenger(parsed.receivedFrom);
+  const paymentLine1 = cleanShortPlace(parsed.paymentLine1) ?? derivePaymentLine1(null);
+  const paymentLine2 =
+    originShort && destinationShort
+      ? derivePaymentLine2(cleanShortPlace(parsed.paymentLine2), originShort, destinationShort)
+      : cleanShortPlace(parsed.paymentLine2);
+  const paymentMethod: PaymentMethod = parsed.paymentMethod === "transfer" ? "transfer" : "cash";
+
   const total = cleanMoney(parsed.total, false);
   const source = asRecord(parsed.breakdown);
   const breakdown: Draft["breakdown"] = {
@@ -32,6 +57,7 @@ export function sanitizeDraft(raw: string): Draft {
     lain: cleanMoney(source.lain, true),
   };
   const missing: RequiredField[] = [];
+  if (!receivedFrom) missing.push("receivedFrom");
   if (!origin) missing.push("origin");
   if (!destination) missing.push("destination");
   if (total == null) missing.push("total");
@@ -44,7 +70,22 @@ export function sanitizeDraft(raw: string): Draft {
   const question = cleanQuestion(parsed.question);
   if (question && confidence === "high") confidence = "medium";
 
-  return { origin, destination, total, breakdown, confidence, missing, question, choices: cleanChoices(parsed.choices) };
+  return {
+    origin,
+    originShort,
+    destination,
+    destinationShort,
+    receivedFrom,
+    paymentLine1,
+    paymentLine2,
+    paymentMethod,
+    total,
+    breakdown,
+    confidence,
+    missing,
+    question,
+    choices: cleanChoices(parsed.choices),
+  };
 }
 
 function cleanQuestion(value: unknown): string | null {
@@ -90,6 +131,28 @@ function cleanPlace(value: unknown): string | null {
   const text = value.trim().replace(/\s+/g, " ");
   if (!text || text === "-" || text.toLowerCase() === "null") return null;
   return text.slice(0, 180);
+}
+
+function cleanShortPlace(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim().replace(/\s+/g, " ");
+  if (!text || text === "-" || text.toLowerCase() === "null") return null;
+  return text.slice(0, 95);
+}
+
+function cleanPassenger(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim().replace(/\s+/g, " ");
+  if (
+    !text ||
+    text === "-" ||
+    text.toLowerCase() === "null" ||
+    /^penumpang(\s*\/\s*pelanggan.*)?$/i.test(text) ||
+    /^pelanggan(\s+gocrot.*)?$/i.test(text)
+  ) {
+    return null;
+  }
+  return text.slice(0, 95);
 }
 
 function cleanMoney(value: unknown, allowZero: boolean): number | null {

@@ -167,8 +167,7 @@ function noteLibrary(obj: unknown, msg?: string): void {
   const record = obj && typeof obj === "object" ? (obj as Record<string, unknown>) : undefined;
   const text = msg || (typeof obj === "string" ? obj : textOfRecord(record?.msg));
   if (!text || text === "stream errored out") return;
-  if (text === "error in handling message") {
-    console.log("[wa] satu pesan tidak bisa dibaca, dilewati");
+  if (text === "error in handling message" || text === "failed to decrypt message") {
     return;
   }
   if (text.includes("init queries")) {

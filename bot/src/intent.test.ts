@@ -12,7 +12,11 @@ test("mengenali YA dan TIDAK yang pendek", () => {
 
 test("batal dan sapaan tidak tertukar dengan rute", () => {
   assert.equal(isCancel("Batal"), true);
+  assert.equal(isCancel("Batalin bikin nya dah"), true);
+  assert.equal(isCancel("gak jadi"), true);
+  assert.equal(isCancel("Nggk jadi"), true);
   assert.equal(isCancel("batal dari pool"), false);
   assert.equal(isGreeting("halo"), true);
+  assert.equal(isGreeting("P"), true);
   assert.equal(isGreeting("halo dari pool ke bandara 700rb"), false);
 });

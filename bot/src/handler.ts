@@ -1,12 +1,10 @@
 import { config } from "./config.js";
 import type { Draft } from "./draft.js";
-import { extractTrip } from "./ai.js";
+import { extractTrip, generateCancelReply } from "./ai.js";
 import { intentOf, isCancel, isGreeting } from "./intent.js";
 import {
   aiErrorText,
-  discardText,
   genericErrorText,
-  helpText,
   missingText,
   noSeriesText,
   rateLimitText,
@@ -14,7 +12,14 @@ import {
   summaryText,
   unregisteredText,
 } from "./messages.js";
-import { choiceReply, groundPlaces } from "./places.js";
+import {
+  choiceReply,
+  choiceSelection,
+  groundPlaces,
+  hasTaggedShareloc,
+  isPinMessage,
+  resolveSharelocMessage,
+} from "./places.js";
 import { emptySession, loadSession, saveSession, type Session } from "./session.js";
 import { confirmTrip, getDriver, isNoSeries, logChat } from "./trips.js";
 
@@ -61,7 +66,7 @@ async function route(
       await send(`${successText(current.committedSeries, config.publicUrl)}\n\nSesi ditutup. Perjalanan tadi tetap tercatat.`);
       return;
     }
-    await send(discardText());
+    await send(await generateCancelReply(text));
     return;
   }
 
@@ -80,12 +85,9 @@ async function route(
     }
     if (intent === "no") {
       await saveSession(phone, emptySession());
-      await send(discardText());
+      await send(await generateCancelReply(text));
       return;
     }
-  } else if (session.state === "idle" && isGreeting(text)) {
-    await send(helpText());
-    return;
   }
 
   if (!allowAi(phone)) {
@@ -93,7 +95,23 @@ async function route(
     return;
   }
 
-  session.buffer = [...session.buffer, choiceReply(session.draft?.choices, text) ?? text].slice(-15);
+  if (/^(buat|bikin)\s+(kwitansi|kwetansi|nota)\s+baru[!.\s]*$/i.test(text)) {
+    session.buffer = [];
+    session.draft = null;
+    session.state = "idle";
+  }
+
+  const previousDraft = session.draft;
+  const chosen = choiceSelection(previousDraft?.choices, text);
+  let entry = choiceReply(previousDraft?.choices, text) ?? text;
+  if (isPinMessage(text)) {
+    const resolvedPin = (await resolveSharelocMessage(text)) ?? text;
+    const isJemputReady = hasTaggedShareloc(session.buffer, "JEMPUT") || Boolean(previousDraft?.origin);
+    const kind = isJemputReady ? "TUJUAN" : "JEMPUT";
+    entry = `[SHARELOK ${kind} RESMI]: ${resolvedPin}`;
+  }
+  const cleanPrevBuffer = session.buffer.filter((item) => !isGreeting(item));
+  session.buffer = [...cleanPrevBuffer, entry].slice(-15);
   session.committedSeries = null;
   let draft: Draft;
   try {
@@ -106,9 +124,29 @@ async function route(
     return;
   }
 
-  draft = await groundPlaces(draft, session.buffer);
+  const skipFields = new Set<"origin" | "destination">();
+  if (chosen) {
+    draft[chosen.field] = chosen.value;
+    draft.originShort = draft.origin ? null : draft.originShort;
+    draft.destinationShort = draft.destination ? null : draft.destinationShort;
+    skipFields.add(chosen.field);
+    const otherField = chosen.field === "origin" ? "destination" : "origin";
+    if (previousDraft?.[otherField]) {
+      draft[otherField] = previousDraft[otherField];
+      skipFields.add(otherField);
+    }
+  }
+
+  draft = await groundPlaces(draft, session.buffer, { skipFields, previousDraft });
   session.draft = draft;
-  if (draft.question || draft.missing.length || draft.total == null || !draft.origin || !draft.destination) {
+  if (
+    draft.question ||
+    draft.missing.length ||
+    !draft.receivedFrom ||
+    draft.total == null ||
+    !draft.origin ||
+    !draft.destination
+  ) {
     session.state = "awaiting_missing";
     await saveSession(phone, session);
     await send(missingText(draft));
@@ -127,7 +165,13 @@ async function confirm(
   send: (text: string) => Promise<void>,
 ): Promise<void> {
   const draft = session.draft;
-  if (!draft?.origin || !draft.destination || draft.total == null || draft.missing.length) {
+  if (
+    !draft?.receivedFrom ||
+    !draft.origin ||
+    !draft.destination ||
+    draft.total == null ||
+    draft.missing.length
+  ) {
     session.state = "awaiting_missing";
     await saveSession(phone, session);
     await send(missingText(draft ?? emptyDraft()));
@@ -158,11 +202,17 @@ async function confirm(
 function emptyDraft(): Draft {
   return {
     origin: null,
+    originShort: null,
     destination: null,
+    destinationShort: null,
+    receivedFrom: null,
+    paymentLine1: null,
+    paymentLine2: null,
+    paymentMethod: "cash",
     total: null,
     breakdown: { tol: null, bensin: null, parkir: null, lain: null },
     confidence: "low",
-    missing: ["origin", "destination", "total"],
+    missing: ["receivedFrom", "origin", "destination", "total"],
     question: null,
     choices: null,
   };

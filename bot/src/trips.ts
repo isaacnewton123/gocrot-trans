@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
-import type { Draft } from "./draft.js";
+import type { Draft, PaymentMethod } from "./draft.js";
 import { database } from "./mongo.js";
 import { createMutex } from "./mutex.js";
+import {
+  derivePaymentLine1,
+  derivePaymentLine2,
+  deriveReceivedFrom,
+  deriveShortPlace,
+  terbilangRupiah,
+} from "./receipt.js";
 
 export type Driver = {
   phone: string;
@@ -23,8 +30,15 @@ type TripDoc = {
   driverPhone: string;
   driverName: string;
   origin: string;
+  originShort: string;
   destination: string;
+  destinationShort: string;
+  receivedFrom: string;
+  paymentLine1: string;
+  paymentLine2: string;
+  paymentMethod: PaymentMethod;
   total: number;
+  terbilang: string;
   tol: number | null;
   bensin: number | null;
   parkir: number | null;
@@ -102,25 +116,54 @@ function tripData(
   confirmedAt: string,
 ): TripDoc {
   const draft = input.draft;
+  const origin = draft.origin ?? "";
+  const destination = draft.destination ?? "";
+  const originShort = draft.originShort || deriveShortPlace(origin);
+  const destinationShort = draft.destinationShort || deriveShortPlace(destination);
+  const receivedFrom = deriveReceivedFrom(draft.receivedFrom, originShort);
+  const paymentLine1 = derivePaymentLine1(draft.paymentLine1);
+  const paymentLine2 = derivePaymentLine2(draft.paymentLine2, originShort, destinationShort);
+  const paymentMethod: PaymentMethod = draft.paymentMethod === "transfer" ? "transfer" : "cash";
+  const total = draft.total ?? 0;
+  const terbilang = terbilangRupiah(total);
+
   return {
     _id: tripId,
     seriesCode,
     driverPhone: input.phone,
     driverName: input.driverName,
-    origin: draft.origin ?? "",
-    destination: draft.destination ?? "",
-    total: draft.total ?? 0,
+    origin,
+    originShort,
+    destination,
+    destinationShort,
+    receivedFrom,
+    paymentLine1,
+    paymentLine2,
+    paymentMethod,
+    total,
+    terbilang,
     tol: draft.breakdown.tol ?? null,
     bensin: draft.breakdown.bensin ?? null,
     parkir: draft.breakdown.parkir ?? null,
     lain: draft.breakdown.lain ?? null,
     confirmedAt,
     sourceText: input.sourceText.slice(0, 8000),
-    searchText: [seriesCode, input.driverName, input.phone, draft.origin, draft.destination]
+    searchText: [
+      seriesCode,
+      input.driverName,
+      input.phone,
+      receivedFrom,
+      originShort,
+      origin,
+      destinationShort,
+      destination,
+      paymentLine1,
+      paymentLine2,
+    ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
-      .slice(0, 500),
+      .slice(0, 800),
   };
 }
 

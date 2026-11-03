@@ -10,7 +10,7 @@ import { database } from "./mongo.js";
 
 type KeyBag = Record<string, Record<string, unknown>>;
 
-const DEBOUNCE_MS = 1500;
+const DEBOUNCE_MS = 300;
 const AUTH_ID = "baileys-auth";
 
 export type PersistedAuth = {

@@ -1,9 +1,11 @@
 import type { Draft, RequiredField } from "./draft.js";
+import { terbilangRupiah } from "./receipt.js";
 
 const FIELD_LABEL: Record<RequiredField, string> = {
-  origin: "lokasi jemput (dari)",
-  destination: "tujuan (ke)",
-  total: "total tarif",
+  receivedFrom: "nama penumpang/penyewanya",
+  origin: "lokasi jemput beserta kotanya",
+  destination: "lokasi tujuan beserta kotanya",
+  total: "total tarifnya",
 };
 
 export function rupiah(value: number): string {
@@ -15,58 +17,50 @@ export function rupiah(value: number): string {
 }
 
 export function helpText(): string {
-  return [
-    "Kirim rute seperti biasa, contoh:",
-    "",
-    "Dari pool Primajasa Cikopo ke Bandara Soekarno-Hatta total 700rb",
-    "",
-    "Boleh ditambah tol, bensin, atau parkir.",
-    "Kalau nama tempatnya tidak ketemu, bagikan lokasi lewat Lampirkan → Lokasi.",
-    "Ketik BATAL untuk mengulang.",
-  ].join("\n");
+  return "Halo! Mau buat kwitansi perjalanan? Langsung kirim aja *nama penumpang*, *lokasi jemput & tujuan*, sama *total tarifnya* ya.";
 }
 
 export function unregisteredText(): string {
-  return [
-    "❌ Nomor ini belum terdaftar sebagai pengemudi aktif.",
-    "Hubungi admin komunitas supaya nomornya didaftarkan.",
-  ].join("\n");
+  return "Maaf, nomor WhatsApp ini belum terdaftar sebagai pengemudi aktif Gocrot Trans. Coba hubungi admin dulu ya supaya nomornya didaftarkan.";
 }
 
 export function missingText(draft: Draft): string {
   if (draft.question) {
-    const lines = [draft.question];
-    if (draft.missing.includes("total") && !/tarif|total|harga/i.test(draft.question)) {
-      lines.push("Sekalian tulis total tarifnya, misalnya 700rb.");
-    }
-    lines.push("", "Balas bagian itu saja.");
-    return lines.join("\n");
+    return draft.question.trim();
   }
-  const labels = draft.missing.map((field) => FIELD_LABEL[field]).join(", ");
-  const example =
-    draft.missing.length === 1 && draft.missing[0] === "total"
-      ? "Contoh: 700rb"
-      : draft.missing.includes("destination")
-        ? "Contoh: Bandara Soekarno-Hatta"
-        : "Contoh: Pool Primajasa Cikopo";
-  return [`⚠️ Saya belum menangkap: ${labels}.`, "Balas bagian yang kurang saja.", "", example].join(
-    "\n",
-  );
+
+  const labels = draft.missing.map((field) => FIELD_LABEL[field]);
+  if (labels.length === 1) {
+    return `Oke, tinggal ${labels[0]} aja nih yang belum. Boleh diinfokan?`;
+  }
+  const last = labels[labels.length - 1];
+  const rest = labels.slice(0, -1).join(", ");
+  return `Siap, boleh infokan ${rest}, sama ${last} ya?`;
 }
 
 export function summaryText(draft: Draft): string {
+  const total = draft.total ?? 0;
   const lines = [
-    draft.confidence === "low"
-      ? "⚠️ Saya kurang yakin. Mohon dibaca pelan-pelan."
-      : "Mohon dicek ya.",
+    "📋 *Konfirmasi Detail Kwitansi*",
     "",
-    `Dari: ${draft.origin}`,
-    `Ke: ${draft.destination}`,
-    `Total: ${rupiah(draft.total ?? 0)}`,
+    `• *Terima Dari:* ${draft.receivedFrom ?? "-"}`,
+    `• *Pembayaran:* ${draft.paymentLine1 ?? "Layanan Jasa Transportasi Perjalanan"}`,
+    `• *Rute Kwitansi:* ${draft.paymentLine2 ?? `Rute ${draft.originShort ?? ""} — ${draft.destinationShort ?? ""}`}`,
+    `• *Jemput:* ${draft.origin}`,
+    `• *Tujuan:* ${draft.destination}`,
+    `• *Total:* *${rupiah(total)}* (_${terbilangRupiah(total)}_)`,
+    `• *Metode:* ${draft.paymentMethod === "transfer" ? "Transfer" : "Cash"}`,
   ];
+
   const extra = breakdownLines(draft);
-  if (extra.length) lines.push(...extra);
-  lines.push("", "Ketik YA kalau sudah benar.", "Ketik TIDAK untuk batal.");
+  if (extra.length) {
+    lines.push(...extra);
+  }
+
+  lines.push(
+    "",
+    "Sudah pas datanya? Balas *YA* untuk cetak nomor seri, atau *BATAL* kalau mau ulang.",
+  );
   return lines.join("\n");
 }
 
@@ -75,50 +69,50 @@ function breakdownLines(draft: Draft): string[] {
     ["tol", "Tol"],
     ["bensin", "Bensin"],
     ["parkir", "Parkir"],
-    ["lain", "Lain"],
+    ["lain", "Lain-lain"],
   ];
   return labels
     .filter(([key]) => draft.breakdown[key] != null)
-    .map(([key, label]) => `${label}: ${rupiah(draft.breakdown[key] ?? 0)}`);
+    .map(([key, label]) => `• *${label}:* ${rupiah(draft.breakdown[key] ?? 0)}`);
 }
 
 export function successText(code: string, publicUrl: string): string {
-  const lines = ["✅ Tercatat.", "", "Nomor seri:", code, "", "Tulis nomor ini di kwitansi fisik."];
-  if (publicUrl) lines.push(`Cek kwitansi: ${publicUrl}`);
+  const lines = [
+    "✅ *Kwitansi Berhasil Tercatat*",
+    "",
+    `Nomor Seri: *${code}*`,
+    "Silakan tulis nomor ini di kwitansi fisik.",
+  ];
+  if (publicUrl) {
+    lines.push("", `Cek & unduh kwitansi digital:\n${publicUrl}`);
+  }
   return lines.join("\n");
 }
 
 export function noSeriesText(): string {
-  return [
-    "⚠️ Stok nomor seri habis.",
-    "Hubungi admin, lalu ketik YA lagi setelah nomor baru dibuat.",
-    "Data perjalanan ini masih tersimpan.",
-  ].join("\n");
+  return "Stok nomor seri di sistem lagi habis nih. Coba kabari admin buat tambah nomor seri baru, nanti tinggal balas *YA* lagi ya.";
 }
 
 export function discardText(): string {
-  return ["Baik, draf dibatalkan.", "Kirim ulang rute perjalanan dari awal."].join("\n");
+  return "Oke, draf yang tadi sudah dibatalkan. Kalau mau buat baru, langsung kirim aja datanya ya.";
 }
 
 export function aiErrorText(): string {
-  return ["⚠️ Saya belum bisa membaca pesan itu.", "Coba kirim ulang sebentar lagi."].join("\n");
+  return "Maaf, barusan koneksinya agak tersendat. Boleh kirim ulang pesannya?";
 }
 
 export function rateLimitText(): string {
-  return ["⚠️ Terlalu banyak pesan beruntun.", "Tunggu beberapa menit, lalu kirim lagi."].join("\n");
+  return "Pesannya agak terlalu cepat nih, tunggu sekitar semenit baru kirim lagi ya.";
 }
 
 export function mediaText(): string {
-  return "Kirim dalam bentuk teks, atau bagikan lokasi lewat Lampirkan → Lokasi. Foto belum bisa dibaca.";
+  return "Kirim pakai teks aja ya, atau lewat fitur *Lampirkan → Lokasi* kalau mau kirim titik map.";
 }
 
 export function lidText(): string {
-  return [
-    "⚠️ Nomor WhatsApp tidak terbaca.",
-    "Kirim dari chat pribadi biasa, atau hubungi admin.",
-  ].join("\n");
+  return "Nomor WhatsApp-nya belum terbaca jelas. Coba kirim dari chat pribadi biasa atau hubungi admin ya.";
 }
 
 export function genericErrorText(): string {
-  return "⚠️ Ada gangguan. Coba kirim ulang sebentar lagi.";
+  return "Maaf, lagi ada sedikit gangguan. Coba kirim ulang sebentar lagi ya.";
 }

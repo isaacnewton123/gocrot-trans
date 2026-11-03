@@ -34,9 +34,19 @@ export function intentOf(text: string): "yes" | "no" | "other" {
 }
 
 export function isCancel(text: string): boolean {
-  return /^(batal|reset|ulang)[!.\s]*$/i.test(text.trim());
+  const clean = text.trim();
+  if (!clean || /\b(dari|ke|jemput|tujuan|\d+\s*(rb|ribu|k|jt|juta))\b/i.test(clean)) {
+    return false;
+  }
+  return (
+    /\b(batal|batalin|batalkan|cancel|reset)\b/i.test(clean) ||
+    /\b(g|ga|gak|gk|ngga|nggak|nggk|ngk|engga|enggak|kagak|tidak|tdk|jangan)\s*jadi\b/i.test(clean) ||
+    /^(ulang|stop|hapus)\b/i.test(clean)
+  );
 }
 
 export function isGreeting(text: string): boolean {
-  return /^(halo|hai|hi|hello|help|menu|mulai|ping)[!.\s]*$/i.test(text.trim());
+  return /^(p|halo|hai|hi|hello|help|menu|mulai|ping|pagi|siang|sore|malam|selamat\s+(pagi|siang|sore|malam)|assalamualaikum|permisi|tes|test)[!.\s]*$/i.test(
+    text.trim(),
+  );
 }
