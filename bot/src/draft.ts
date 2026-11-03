@@ -8,6 +8,13 @@ export type Draft = {
   breakdown: Record<MoneyField, number | null>;
   confidence: "high" | "medium" | "low";
   missing: RequiredField[];
+  question: string | null;
+  choices: PlaceChoices | null;
+};
+
+export type PlaceChoices = {
+  field: "origin" | "destination";
+  options: string[];
 };
 
 const MONEY_MAX = 2_000_000_000;
@@ -34,8 +41,27 @@ export function sanitizeDraft(raw: string): Draft {
     confidence = parsed.confidence;
   }
   if (missing.length && confidence === "high") confidence = "medium";
+  const question = cleanQuestion(parsed.question);
+  if (question && confidence === "high") confidence = "medium";
 
-  return { origin, destination, total, breakdown, confidence, missing };
+  return { origin, destination, total, breakdown, confidence, missing, question, choices: cleanChoices(parsed.choices) };
+}
+
+function cleanQuestion(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || text.toLowerCase() === "null") return null;
+  return text.slice(0, 900);
+}
+
+function cleanChoices(value: unknown): Draft["choices"] {
+  const record = asRecord(value);
+  const field = record.field === "origin" || record.field === "destination" ? record.field : null;
+  const options = Array.isArray(record.options)
+    ? record.options.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 5)
+    : [];
+  if (!field || options.length < 2) return null;
+  return { field, options };
 }
 
 export function parseJson(raw: string): Record<string, unknown> {

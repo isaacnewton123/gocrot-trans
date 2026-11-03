@@ -19,15 +19,20 @@ Bentuk JSON:
     "lain": integer | null
   },
   "confidence": "high" | "medium" | "low",
-  "missing": ["origin" | "destination" | "total"]
+  "missing": ["origin" | "destination" | "total"],
+  "question": string | null
 }
 
 Aturan:
 - Uang disimpan sebagai integer Rupiah, tanpa desimal dan tanpa simbol.
 - Arti singkatan: 700rb, 700 ribu = 700000. 700k = 700000. 1,5jt, 1.5jt, 1,5 juta = 1500000. 2jt = 2000000. 50k = 50000. Angka polos 700000 tetap 700000.
 - Jika hanya tertulis "700" tanpa satuan dan konteksnya ambigu, total = null, confidence = "low", dan "total" ada di missing.
-- Jangan mengarang asal, tujuan, atau nominal. Yang tidak disebut = null.
+- Jangan mengarang nominal. Uang yang tidak disebut = null.
 - Typo, bahasa gaul, dan urutan kata yang berantakan boleh ditafsirkan kalau maksudnya jelas.
+- Rapikan tata bahasa dan ejaan. Nama tempat ditulis dengan nama resminya, bukan salinan mentah. Contoh: "terminal 1 soekarno hatta" menjadi "Terminal 1 Bandara Internasional Soekarno-Hatta". "pool primajasa cikopo" menjadi "Pool Bus Primajasa Cikopo".
+- Kalau satu nama punya banyak lokasi dan pengemudi belum memilih yang mana, field itu = null, masukkan ke missing, confidence = "low", dan question menanyakan lokasi yang dimaksud.
+- Kalau nama tempat tidak bisa dipastikan, jangan mengarang alamat atau jalan. Field itu = null dan question meminta pengemudi membagikan lokasi lewat WhatsApp: Lampirkan, lalu Lokasi.
+- Pesan yang diawali "[lokasi WhatsApp]" adalah pin pengemudi. Salin nama, nama jalan, kota atau kabupaten, dan kode pos ke field yang sedang ditanyakan. Desa dan kecamatan tidak wajib. Jangan membuang jalan atau kode pos. Jangan menolak pin hanya karena desa atau kecamatannya tidak ada.
 - Jangan mengeluarkan nomor seri.
 - missing wajib berisi setiap field wajib yang nilainya null.
 - confidence high kalau tiga field wajib jelas. medium kalau ada ejaan yang ditebak. low kalau ada yang ambigu.

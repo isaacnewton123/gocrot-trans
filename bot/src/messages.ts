@@ -21,6 +21,7 @@ export function helpText(): string {
     "Dari pool Primajasa Cikopo ke Bandara Soekarno-Hatta total 700rb",
     "",
     "Boleh ditambah tol, bensin, atau parkir.",
+    "Kalau nama tempatnya tidak ketemu, bagikan lokasi lewat Lampirkan → Lokasi.",
     "Ketik BATAL untuk mengulang.",
   ].join("\n");
 }
@@ -33,6 +34,14 @@ export function unregisteredText(): string {
 }
 
 export function missingText(draft: Draft): string {
+  if (draft.question) {
+    const lines = [draft.question];
+    if (draft.missing.includes("total") && !/tarif|total|harga/i.test(draft.question)) {
+      lines.push("Sekalian tulis total tarifnya, misalnya 700rb.");
+    }
+    lines.push("", "Balas bagian itu saja.");
+    return lines.join("\n");
+  }
   const labels = draft.missing.map((field) => FIELD_LABEL[field]).join(", ");
   const example =
     draft.missing.length === 1 && draft.missing[0] === "total"
@@ -100,7 +109,7 @@ export function rateLimitText(): string {
 }
 
 export function mediaText(): string {
-  return "Kirim dalam bentuk teks ya. Foto belum bisa dibaca.";
+  return "Kirim dalam bentuk teks, atau bagikan lokasi lewat Lampirkan → Lokasi. Foto belum bisa dibaca.";
 }
 
 export function lidText(): string {

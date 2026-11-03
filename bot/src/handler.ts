@@ -14,6 +14,7 @@ import {
   summaryText,
   unregisteredText,
 } from "./messages.js";
+import { choiceReply, groundPlaces } from "./places.js";
 import { emptySession, loadSession, saveSession, type Session } from "./session.js";
 import { confirmTrip, getDriver, isNoSeries, logChat } from "./trips.js";
 
@@ -92,7 +93,7 @@ async function route(
     return;
   }
 
-  session.buffer = [...session.buffer, text].slice(-15);
+  session.buffer = [...session.buffer, choiceReply(session.draft?.choices, text) ?? text].slice(-15);
   session.committedSeries = null;
   let draft: Draft;
   try {
@@ -105,8 +106,9 @@ async function route(
     return;
   }
 
+  draft = await groundPlaces(draft, session.buffer);
   session.draft = draft;
-  if (draft.missing.length || draft.total == null || !draft.origin || !draft.destination) {
+  if (draft.question || draft.missing.length || draft.total == null || !draft.origin || !draft.destination) {
     session.state = "awaiting_missing";
     await saveSession(phone, session);
     await send(missingText(draft));
@@ -161,6 +163,8 @@ function emptyDraft(): Draft {
     breakdown: { tol: null, bensin: null, parkir: null, lain: null },
     confidence: "low",
     missing: ["origin", "destination", "total"],
+    question: null,
+    choices: null,
   };
 }
 

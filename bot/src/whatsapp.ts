@@ -53,7 +53,7 @@ async function openSocket(): Promise<void> {
     logger,
     browser: Browsers.ubuntu("Gocrot"),
     syncFullHistory: false,
-    markOnlineOnConnect: false,
+    markOnlineOnConnect: true,
     generateHighQualityLinkPreview: false,
     shouldSyncHistoryMessage: () => false,
   });
@@ -199,19 +199,54 @@ async function onMessage(message: WAMessage): Promise<void> {
     if (text) await socket?.sendMessage(remote, { text: lidText() });
     return;
   }
-  if (!text) {
-    await sendAndLog(sender.replyJid, sender.phone, mediaText());
-    return;
+  const stopThinking = await showThinking(sender.replyJid);
+  let seen = false;
+  const markRead = async () => {
+    if (seen) return;
+    seen = true;
+    await socket?.readMessages([message.key]).catch((error: unknown) => {
+      console.error("[wa] gagal menandai pesan terbaca", error instanceof Error ? error.message : error);
+    });
+  };
+  try {
+    if (!text) {
+      await markRead();
+      await sendAndLog(sender.replyJid, sender.phone, mediaText());
+      return;
+    }
+    await lockPhone(sender.phone, () =>
+      handleText({
+        replyJid: sender.replyJid,
+        phone: sender.phone,
+        text,
+        send: async (body) => {
+          await markRead();
+          await sendAndLog(sender.replyJid, sender.phone, body);
+        },
+      }),
+    );
+  } finally {
+    await markRead();
+    await stopThinking();
   }
+}
 
-  await lockPhone(sender.phone, () =>
-    handleText({
-      replyJid: sender.replyJid,
-      phone: sender.phone,
-      text,
-      send: (body) => sendAndLog(sender.replyJid, sender.phone, body),
-    }),
-  );
+async function showThinking(jid: string): Promise<() => Promise<void>> {
+  const beat = async () => {
+    await socket?.sendPresenceUpdate("available");
+    await socket?.presenceSubscribe(jid);
+    await socket?.sendPresenceUpdate("composing", jid);
+  };
+  await beat().catch((error: unknown) => {
+    console.error("[wa] gagal menampilkan sedang mengetik", error instanceof Error ? error.message : error);
+  });
+  const timer = setInterval(() => {
+    void beat().catch(() => undefined);
+  }, 8000);
+  return async () => {
+    clearInterval(timer);
+    await socket?.sendPresenceUpdate("paused", jid).catch(() => undefined);
+  };
 }
 
 function resolveSender(message: WAMessage): { replyJid: string; phone: string } | null {
@@ -227,6 +262,8 @@ function resolveSender(message: WAMessage): { replyJid: string; phone: string } 
 function textOf(message: WAMessage): string {
   const content = message.message;
   if (!content) return "";
+  const pin = content.locationMessage || content.liveLocationMessage;
+  if (pin) return locationText(pin);
   return (
     content.conversation ||
     content.extendedTextMessage?.text ||
@@ -234,6 +271,34 @@ function textOf(message: WAMessage): string {
     content.videoMessage?.caption ||
     ""
   ).trim();
+}
+
+function locationText(pin: {
+  degreesLatitude?: number | null;
+  degreesLongitude?: number | null;
+  name?: string | null;
+  address?: string | null;
+}): string {
+  const pieces = [sharedAddress(pin.name, pin.address).join(", ")];
+  if (typeof pin.degreesLatitude === "number" && typeof pin.degreesLongitude === "number") {
+    pieces.push(`${pin.degreesLatitude.toFixed(6)}, ${pin.degreesLongitude.toFixed(6)}`);
+  }
+  return ["[lokasi WhatsApp]", ...pieces.filter(Boolean)].join(" ");
+}
+
+function sharedAddress(name?: string | null, address?: string | null): string[] {
+  const raw = [name, address]
+    .flatMap((part) => (part ?? "").split(","))
+    .map((part) => part.trim())
+    .filter((part) => part && !/^(id|indonesia)$/i.test(part));
+  const unique: string[] = [];
+  for (const part of raw) {
+    if (!unique.some((item) => item.toLowerCase() === part.toLowerCase())) unique.push(part);
+  }
+  const postcode = unique.find((part) => /^\d{5}$/.test(part));
+  const road = unique.find((part) => /\b(jl\.?|jalan)\b/i.test(part));
+  const rest = unique.filter((part) => part !== postcode && part !== road);
+  return [...rest, road, postcode].filter((part): part is string => Boolean(part));
 }
 
 function messageTime(message: WAMessage): number {

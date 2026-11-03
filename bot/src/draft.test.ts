@@ -23,7 +23,25 @@ test("membuang data yang dikarang atau tidak utuh", () => {
   assert.equal(draft.breakdown.bensin, 0);
   assert.equal(draft.breakdown.lain, null);
   assert.equal(draft.confidence, "medium");
+  assert.equal(draft.question, null);
   assert.equal("series" in draft, false);
+});
+
+test("menyimpan pertanyaan kalau tempatnya belum spesifik", () => {
+  const draft = sanitizeDraft(
+    JSON.stringify({
+      origin: null,
+      destination: "Bandara Soekarno-Hatta",
+      total: 700000,
+      confidence: "high",
+      missing: ["origin"],
+      question: "  Pool Primajasa yang mana? Sebutkan kotanya.  ",
+      breakdown: {},
+    }),
+  );
+  assert.equal(draft.question, "Pool Primajasa yang mana? Sebutkan kotanya.");
+  assert.equal(draft.confidence, "medium");
+  assert.equal(draft.destination, "Bandara Soekarno-Hatta");
 });
 
 test("menerima integer rupiah yang sudah jelas", () => {
