@@ -6,14 +6,23 @@ export type Driver = {
   note?: string;
 };
 
+export type PaymentMethod = "cash" | "transfer";
+
 export type Trip = {
   id: string;
   seriesCode: string;
   driverPhone: string;
   driverName: string;
   origin: string;
+  originShort: string;
   destination: string;
+  destinationShort: string;
+  receivedFrom: string;
+  paymentLine1: string;
+  paymentLine2: string;
+  paymentMethod: PaymentMethod;
   total: number;
+  terbilang: string;
   tol?: number | null;
   bensin?: number | null;
   parkir?: number | null;
@@ -44,8 +53,15 @@ export type ChatLog = {
 
 export type PublicTrip = {
   origin: string;
+  originShort: string;
   destination: string;
+  destinationShort: string;
+  receivedFrom: string;
+  paymentLine1: string;
+  paymentLine2: string;
+  paymentMethod: PaymentMethod;
   total: number;
+  terbilang: string;
   driverName: string;
   confirmedAt: string;
   seriesCode: string;

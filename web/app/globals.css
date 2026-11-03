@@ -3,22 +3,27 @@
 @tailwind utilities;
 
 :root {
-  --background: 40 23% 97%;
-  --foreground: 30 8% 12%;
+  --background: 42 25% 97%;
+  --foreground: 220 18% 13%;
   --card: 0 0% 100%;
-  --card-foreground: 30 8% 12%;
-  --primary: 30 8% 12%;
-  --primary-foreground: 40 30% 97%;
-  --secondary: 40 14% 93%;
-  --secondary-foreground: 30 8% 12%;
-  --muted: 40 12% 93%;
-  --muted-foreground: 30 5% 38%;
-  --destructive: 4 72% 40%;
+  --card-foreground: 220 18% 13%;
+  --primary: 229 50% 22%;
+  --primary-foreground: 40 33% 98%;
+  --secondary: 40 16% 93%;
+  --secondary-foreground: 220 18% 13%;
+  --muted: 40 15% 93%;
+  --muted-foreground: 220 8% 42%;
+  --destructive: 0 65% 42%;
   --destructive-foreground: 0 0% 98%;
-  --border: 36 12% 86%;
-  --input: 36 12% 86%;
-  --ring: 40 70% 42%;
-  --radius: 0.85rem;
+  --border: 38 14% 87%;
+  --input: 38 14% 85%;
+  --ring: 229 50% 22%;
+  --radius: 0.625rem;
+
+  --navy-primary: #1c2654;
+  --navy-dark: #141c42;
+  --paper-bg: #f4f7fc;
+  --parallelogram-bg: #aebce0;
 }
 
 * {
@@ -27,11 +32,341 @@
 
 body {
   min-height: 100vh;
-  background: #f7f6f3;
+  background-color: #f8f7f3;
   color: hsl(var(--foreground));
-  font-family: var(--font-sans), "Segoe UI", sans-serif;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 .font-serif {
   font-family: var(--font-serif), Georgia, serif;
+}
+
+/* =========================================================================
+   Gaya Kwitansi Digital Resmi GOCROT TRANS (Permanen / Read-Only)
+   ========================================================================= */
+
+.kwitansi-paper {
+  width: 960px;
+  min-width: 960px;
+  min-height: 390px;
+  background: linear-gradient(135deg, #f6f9fe 0%, #edf2fa 100%);
+  position: relative;
+  box-shadow: 0 12px 32px -8px rgba(20, 28, 66, 0.14), 0 2px 6px rgba(20, 28, 66, 0.06);
+  display: flex;
+  overflow: hidden;
+  color: var(--navy-dark);
+  border: 1px solid #cbd5e1;
+  user-select: none;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.font-receipt-serif {
+  font-family: "Times New Roman", "Libre Baskerville", Georgia, serif;
+}
+
+.font-receipt-sans {
+  font-family: "Arial Black", "Archivo Black", "Inter", sans-serif;
+}
+
+.binder-strip {
+  width: 54px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 64px;
+  flex-shrink: 0;
+  border-right: 2.5px dashed var(--navy-primary);
+  padding-top: 30px;
+}
+
+.binder-strip::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 16px;
+  border-left: 1px dashed #94a3b8;
+}
+
+.binder-hole {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #e2e8f0;
+  border: 1.5px solid #94a3b8;
+  box-shadow: inset 1px 2px 4px rgba(15, 23, 42, 0.25);
+  margin-right: 12px;
+}
+
+.left-sidebar {
+  width: 138px;
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 8px 16px 8px;
+  border-right: 3.5px solid var(--navy-primary);
+}
+
+.left-sidebar::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  right: 3.5px;
+  width: 2px;
+  background-color: var(--navy-primary);
+}
+
+.vertical-company-info {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-top: auto;
+  margin-bottom: 6px;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.vertical-company-title {
+  font-family: "Inter", "Arial", sans-serif;
+  font-weight: 800;
+  font-size: 23px;
+  letter-spacing: 0.6px;
+  color: var(--navy-primary);
+  white-space: nowrap;
+  margin-left: 4px;
+}
+
+.vertical-company-address {
+  font-family: "Times New Roman", Georgia, serif;
+  font-weight: 600;
+  font-size: 14.5px;
+  color: #111827;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+.main-receipt-area {
+  flex: 1;
+  position: relative;
+  padding: 24px 38px 18px 26px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  z-index: 1;
+}
+
+/* Cap "TERVERIFIKASI" di Tengah Kwitansi */
+.verified-center-stamp {
+  position: absolute;
+  top: 52%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-10deg);
+  pointer-events: none;
+  z-index: 1;
+  padding: 5px;
+  border: 2.5px solid rgba(21, 101, 58, 0.22);
+  border-radius: 6px;
+}
+
+.verified-center-stamp-inner {
+  border: 1.5px solid rgba(21, 101, 58, 0.18);
+  border-radius: 3px;
+  padding: 6px 26px 5px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.verified-center-stamp-title {
+  font-family: "Inter", "Arial Black", sans-serif;
+  font-weight: 900;
+  font-size: 32px;
+  letter-spacing: 6px;
+  color: rgba(21, 101, 58, 0.2);
+  line-height: 1.05;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.verified-center-stamp-sub {
+  font-family: "Inter", "Arial", sans-serif;
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 2.5px;
+  color: rgba(21, 101, 58, 0.25);
+  margin-top: 2px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.kwitansi-heading {
+  font-family: "Times New Roman", Georgia, serif;
+  font-weight: 700;
+  font-style: italic;
+  font-size: 37px;
+  letter-spacing: 3.5px;
+  color: var(--navy-primary);
+  line-height: 1;
+  text-shadow: 0.5px 0 0 var(--navy-primary);
+}
+
+.receipt-row {
+  display: flex;
+  align-items: flex-end;
+  position: relative;
+  z-index: 2;
+  font-family: "Times New Roman", Georgia, serif;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.receipt-row.receipt-row-top {
+  align-items: flex-start;
+}
+
+.receipt-label {
+  width: 142px;
+  flex-shrink: 0;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  line-height: 1.25;
+}
+
+.receipt-colon {
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.receipt-line {
+  flex: 1;
+  border-bottom: 1.5px solid #1e293b;
+  min-height: 25px;
+  padding: 0 8px 1px 8px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.receipt-open-field {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 8px;
+  font-weight: 600;
+  font-style: italic;
+  color: #1e293b;
+  line-height: 1.25;
+}
+
+.jumlah-wrapper {
+  width: 390px;
+  border-top: 2.8px solid var(--navy-primary);
+  border-bottom: 2.8px solid var(--navy-primary);
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+
+.jumlah-label {
+  font-family: "Times New Roman", Georgia, serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 20px;
+  color: #0f172a;
+  padding-left: 4px;
+  padding-right: 22px;
+  white-space: nowrap;
+}
+
+.parallelogram-box {
+  flex: 1;
+  height: 29px;
+  background-color: var(--parallelogram-bg);
+  transform: skewX(-24deg);
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+}
+
+.parallelogram-content {
+  transform: skewX(24deg);
+  width: 100%;
+  font-family: "Times New Roman", Georgia, serif;
+  font-weight: 700;
+  font-size: 19px;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.custom-checkbox {
+  width: 13px;
+  height: 13px;
+  border: 1.4px solid #1e293b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.stamp-overlay {
+  position: absolute;
+  right: 44px;
+  bottom: 6px;
+  width: 155px;
+  height: 155px;
+  pointer-events: none;
+  z-index: 1;
+  transform: rotate(-6deg);
+  mix-blend-mode: multiply;
+  opacity: 0.28;
+  filter: brightness(1.15) contrast(0.9);
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 5mm;
+  }
+  body {
+    background: transparent !important;
+  }
+  header,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+  .print-wrapper {
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+  .kwitansi-paper {
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+    margin: 0 auto !important;
+  }
+  .binder-hole {
+    background-color: #ffffff !important;
+    border: 1.5px solid #94a3b8 !important;
+    box-shadow: none !important;
+  }
 }

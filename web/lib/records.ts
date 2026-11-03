@@ -2,11 +2,30 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { MongoServerError, type Filter } from "mongodb";
-import { jakartaEnd, jakartaStart, normalizeSeries } from "./format";
+import {
+  derivePaymentLine1,
+  derivePaymentLine2,
+  deriveReceivedFrom,
+  deriveShortPlace,
+  jakartaEnd,
+  jakartaStart,
+  normalizeSeries,
+  terbilangRupiah,
+} from "./format";
 import { database, failMessage } from "./mongo";
 import { normalizePhone } from "./phone";
 import { createSeriesBook, type SeriesDoc } from "./series-book";
-import type { ChatLog, Driver, GenerateResult, Series, Trip, TripFilters, Validation } from "./types";
+import type {
+  ChatLog,
+  Driver,
+  GenerateResult,
+  PaymentMethod,
+  PublicTrip,
+  Series,
+  Trip,
+  TripFilters,
+  Validation,
+} from "./types";
 
 type DriverDoc = { _id: string; phone: string; name: string; active: boolean; note: string };
 type TripDoc = {
@@ -15,8 +34,15 @@ type TripDoc = {
   driverPhone: string;
   driverName: string;
   origin: string;
+  originShort?: string;
   destination: string;
+  destinationShort?: string;
+  receivedFrom?: string;
+  paymentLine1?: string;
+  paymentLine2?: string;
+  paymentMethod?: PaymentMethod;
   total: number;
+  terbilang?: string;
   tol: number | null;
   bensin: number | null;
   parkir: number | null;
@@ -244,20 +270,7 @@ export async function validateReceipt(codeInput: string): Promise<Validation | {
           ok: true,
           result: "valid",
           series: code,
-          trip: {
-            origin: trip.origin,
-            destination: trip.destination,
-            total: trip.total,
-            driverName: trip.driverName,
-            confirmedAt: trip.confirmedAt,
-            seriesCode: trip.seriesCode,
-            breakdown: {
-              tol: trip.tol ?? null,
-              bensin: trip.bensin ?? null,
-              parkir: trip.parkir ?? null,
-              lain: trip.lain ?? null,
-            },
-          },
+          trip: toPublicTrip(trip),
         };
       }
     }
@@ -286,7 +299,10 @@ function tripFilter(filters: TripFilters): Filter<TripDoc> {
       $or: [
         { seriesCode: { $regex: pattern, $options: "i" } },
         { driverName: { $regex: pattern, $options: "i" } },
+        { receivedFrom: { $regex: pattern, $options: "i" } },
+        { originShort: { $regex: pattern, $options: "i" } },
         { origin: { $regex: pattern, $options: "i" } },
+        { destinationShort: { $regex: pattern, $options: "i" } },
         { destination: { $regex: pattern, $options: "i" } },
       ],
     });
@@ -319,20 +335,63 @@ function toSeries(doc: SeriesDoc): Series {
 }
 
 function toTrip(doc: TripDoc): Trip {
+  const origin = doc.origin || "";
+  const destination = doc.destination || "";
+  const originShort = doc.originShort || deriveShortPlace(origin);
+  const destinationShort = doc.destinationShort || deriveShortPlace(destination);
+  const receivedFrom = deriveReceivedFrom(doc.receivedFrom, originShort);
+  const paymentLine1 = derivePaymentLine1(doc.paymentLine1);
+  const paymentLine2 = derivePaymentLine2(doc.paymentLine2, originShort, destinationShort);
+  const paymentMethod: PaymentMethod = doc.paymentMethod === "transfer" ? "transfer" : "cash";
+  const total = Number(doc.total) || 0;
+  const terbilang = doc.terbilang || terbilangRupiah(total);
+
   return {
     id: doc._id,
     seriesCode: doc.seriesCode,
     driverPhone: doc.driverPhone,
     driverName: doc.driverName,
-    origin: doc.origin,
-    destination: doc.destination,
-    total: doc.total,
+    origin,
+    originShort,
+    destination,
+    destinationShort,
+    receivedFrom,
+    paymentLine1,
+    paymentLine2,
+    paymentMethod,
+    total,
+    terbilang,
     tol: doc.tol,
     bensin: doc.bensin,
     parkir: doc.parkir,
     lain: doc.lain,
     confirmedAt: doc.confirmedAt,
     sourceText: doc.sourceText,
+  };
+}
+
+function toPublicTrip(doc: TripDoc): PublicTrip {
+  const normalized = toTrip(doc);
+  return {
+    origin: normalized.origin,
+    originShort: normalized.originShort,
+    destination: normalized.destination,
+    destinationShort: normalized.destinationShort,
+    receivedFrom: normalized.receivedFrom,
+    paymentLine1: normalized.paymentLine1,
+    paymentLine2: normalized.paymentLine2,
+    paymentMethod: normalized.paymentMethod,
+    total: normalized.total,
+    terbilang: normalized.terbilang,
+    driverName: normalized.driverName,
+    confirmedAt: normalized.confirmedAt,
+    seriesCode: normalized.seriesCode,
+    breakdown: {
+      tol: normalized.tol ?? null,
+      bensin: normalized.bensin ?? null,
+      parkir: normalized.parkir ?? null,
+      lain: normalized.lain ?? null,
+    },
   };
 }
 
