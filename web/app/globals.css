@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 40 33% 95%;
+  --foreground: 30 12% 10%;
+  --card: 40 45% 98%;
+  --card-foreground: 30 12% 10%;
+  --primary: 43 90% 46%;
+  --primary-foreground: 30 14% 10%;
+  --secondary: 36 22% 90%;
+  --secondary-foreground: 30 12% 10%;
+  --muted: 36 16% 90%;
+  --muted-foreground: 30 6% 34%;
+  --destructive: 4 72% 40%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 34 16% 80%;
+  --input: 34 16% 78%;
+  --ring: 43 90% 38%;
+  --radius: 0.85rem;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  min-height: 100vh;
+  background:
+    linear-gradient(#1a1814, #1a1814) 0 0 / 100% 8px no-repeat,
+    repeating-linear-gradient(90deg, #f0c419 0 16px, #1a1814 16px 26px) 0 8px / 100% 10px no-repeat,
+    hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans), "Segoe UI", sans-serif;
+}
+
+.font-serif {
+  font-family: var(--font-serif), Georgia, serif;
+}

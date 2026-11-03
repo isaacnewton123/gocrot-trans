@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.next/
+out/
+.env
+.env.local
+*.log
+.auth/
+coverage/
+.DS_Store
+Thumbs.db

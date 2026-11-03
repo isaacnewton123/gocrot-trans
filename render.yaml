@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: gocrot-wa-bot
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: bot
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: APPWRITE_ENDPOINT
+        sync: false
+      - key: APPWRITE_PROJECT_ID
+        sync: false
+      - key: APPWRITE_API_KEY
+        sync: false
+      - key: APPWRITE_DATABASE_ID
+        value: main
+      - key: APPWRITE_BUCKET_ID
+        value: baileys-auth
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: PUBLIC_VALIDATE_URL
+        sync: false
