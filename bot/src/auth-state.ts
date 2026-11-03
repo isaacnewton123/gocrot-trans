@@ -30,10 +30,7 @@ export async function loadAuthState(): Promise<PersistedAuth> {
       bucketId: ids.bucketId,
       fileId: ids.authFileId,
     });
-    const parsed = JSON.parse(Buffer.from(downloaded).toString("utf8"), BufferJSON.reviver) as {
-      creds?: AuthenticationCreds;
-      keys?: KeyBag;
-    };
+    const parsed = readSession(downloaded);
     if (!parsed.creds) throw new Error("Berkas sesi WhatsApp rusak");
     creds = parsed.creds;
     Object.assign(keys, parsed.keys ?? {});
@@ -138,4 +135,20 @@ export async function loadAuthState(): Promise<PersistedAuth> {
       console.log("[wa] sesi dihapus. Scan QR baru.");
     },
   };
+}
+
+function readSession(downloaded: unknown): { creds?: AuthenticationCreds; keys?: KeyBag } {
+  return JSON.parse(sessionText(downloaded), BufferJSON.reviver) as {
+    creds?: AuthenticationCreds;
+    keys?: KeyBag;
+  };
+}
+
+function sessionText(downloaded: unknown): string {
+  if (typeof downloaded === "string") return downloaded;
+  if (downloaded instanceof ArrayBuffer) return Buffer.from(downloaded).toString("utf8");
+  if (ArrayBuffer.isView(downloaded)) {
+    return Buffer.from(downloaded.buffer, downloaded.byteOffset, downloaded.byteLength).toString("utf8");
+  }
+  return JSON.stringify(downloaded);
 }
