@@ -1,7 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useState } from "react";
+
+import { SiteFooter } from "@/components/site/footer";
+import { SiteHeader } from "@/components/site/header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,11 +40,10 @@ export default function ValidasiPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col px-5 py-10">
-      <Link href="/" className="text-sm font-semibold text-muted-foreground">
-        Gocrot Trans
-      </Link>
-      <h1 className="mt-3 font-serif text-4xl">Validasi kwitansi</h1>
+    <>
+      <SiteHeader />
+      <main className="mx-auto flex min-h-[70vh] max-w-lg flex-col px-5 py-12">
+      <h1 className="font-serif text-4xl">Validasi kwitansi</h1>
       <p className="mt-2 text-muted-foreground">Ketik nomor seri yang tertulis di kertas, misalnya A7K2-0001.</p>
 
       {!envReady && (
@@ -70,7 +71,9 @@ export default function ValidasiPage() {
 
       {error && <p className="mt-4 text-sm font-semibold text-destructive">{error}</p>}
       {result && <ResultCard result={result} />}
-    </main>
+      </main>
+      <SiteFooter />
+    </>
   );
 }
 
