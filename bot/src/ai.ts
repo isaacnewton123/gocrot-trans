@@ -1,5 +1,8 @@
 import { config } from "./config.js";
 import { sanitizeDraft, type Draft } from "./draft.js";
+import { GEMINI_TEXT_MODELS, GROQ_CHAT_MODELS, modelChain } from "./models.js";
+
+const ATTEMPT_MS = 12_000;
 
 const INSTRUCTIONS = `Anda mengekstrak data perjalanan taksi dari chat pengemudi berbahasa Indonesia.
 Balas HANYA dengan JSON. Tanpa prosa, tanpa markdown.
@@ -42,29 +45,69 @@ export async function extractTrip(messages: string[]): Promise<Draft> {
 }
 
 async function complete(prompt: string): Promise<string> {
+  const errors: string[] = [];
   if (config.geminiKey) {
-    try {
-      return await gemini(prompt);
-    } catch (error) {
-      console.error("[ai] Gemini gagal", error);
-      if (!config.groqKey) throw error;
+    const models = modelChain(
+      config.geminiModel,
+      config.geminiModels.length ? config.geminiModels : GEMINI_TEXT_MODELS,
+    );
+    for (const model of models) {
+      try {
+        const text = await gemini(prompt, model);
+        console.log(`[ai] Gemini ${model}`);
+        return text;
+      } catch (error) {
+        const message = errorText(error);
+        console.error(`[ai] Gemini ${model} gagal: ${message}`);
+        errors.push(message);
+        if (isFatalAuth(message)) break;
+      }
     }
   }
-  return groq(prompt);
+  if (config.groqKey) {
+    const models = modelChain(
+      config.groqModel,
+      config.groqModels.length ? config.groqModels : GROQ_CHAT_MODELS,
+    );
+    for (const model of models) {
+      try {
+        const text = await groq(prompt, model);
+        console.log(`[ai] Groq ${model}`);
+        return text;
+      } catch (error) {
+        const message = errorText(error);
+        console.error(`[ai] Groq ${model} gagal: ${message}`);
+        errors.push(message);
+        if (isFatalAuth(message)) break;
+      }
+    }
+  }
+  throw new Error(errors.at(-1) || "AI_FAILED");
 }
 
-async function gemini(prompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}:generateContent?key=${encodeURIComponent(config.geminiKey)}`;
+async function gemini(prompt: string, model: string): Promise<string> {
+  try {
+    return await geminiOnce(prompt, model, true);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Gemini 400")) {
+      return geminiOnce(prompt, model, false);
+    }
+    throw error;
+  }
+}
+
+async function geminiOnce(prompt: string, model: string, jsonMode: boolean): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.geminiKey)}`;
+  const generationConfig: { temperature: number; responseMimeType?: string } = { temperature: 0 };
+  if (jsonMode) generationConfig.responseMimeType = "application/json";
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0,
-        responseMimeType: "application/json",
-      },
+      generationConfig,
     }),
+    signal: AbortSignal.timeout(ATTEMPT_MS),
   });
   if (!response.ok) {
     throw new Error(`Gemini ${response.status}: ${(await response.text()).slice(0, 300)}`);
@@ -73,34 +116,60 @@ async function gemini(prompt: string): Promise<string> {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
   const text = json.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
-  if (!text.trim()) throw new Error("Gemini mengembalikan jawaban kosong");
+  if (!text.trim()) throw new Error(`Gemini ${model} mengembalikan jawaban kosong`);
   return text;
 }
 
-async function groq(prompt: string): Promise<string> {
+async function groq(prompt: string, model: string): Promise<string> {
+  try {
+    return await groqOnce(prompt, model, true);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Groq 400")) {
+      return groqOnce(prompt, model, false);
+    }
+    throw error;
+  }
+}
+
+async function groqOnce(prompt: string, model: string, jsonMode: boolean): Promise<string> {
+  const body: Record<string, unknown> = {
+    model,
+    temperature: 0,
+    messages: [
+      { role: "system", content: "Balas hanya dengan JSON sesuai permintaan pengguna." },
+      { role: "user", content: prompt },
+    ],
+  };
+  if (jsonMode) body.response_format = { type: "json_object" };
+  if (model.startsWith("openai/gpt-oss") && !model.includes("safeguard")) body.reasoning_effort = "low";
+  if (model.startsWith("qwen/")) body.reasoning_effort = "none";
+
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.groqKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: config.groqModel,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: "Balas hanya dengan JSON sesuai permintaan pengguna." },
-        { role: "user", content: prompt },
-      ],
-    }),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(ATTEMPT_MS),
   });
   if (!response.ok) {
     throw new Error(`Groq ${response.status}: ${(await response.text()).slice(0, 300)}`);
   }
   const json = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string | null } }>;
   };
   const text = json.choices?.[0]?.message?.content ?? "";
-  if (!text.trim()) throw new Error("Groq mengembalikan jawaban kosong");
+  if (!text.trim()) throw new Error(`Groq ${model} mengembalikan jawaban kosong`);
   return text;
+}
+
+function isFatalAuth(message: string): boolean {
+  return /API key not valid|API_KEY_INVALID|invalid api key|Incorrect API key|invalid_api_key|\b401\b/i.test(
+    message,
+  );
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

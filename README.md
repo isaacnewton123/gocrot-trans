@@ -101,9 +101,9 @@ Hasil halaman `/validasi`:
 2. Buat API key pada paket gratis.
 3. Simpan sebagai `GEMINI_API_KEY`.
 
-Model bawaan adalah `gemini-2.0-flash`. Kalau Google menonaktifkan nama model itu, ubah `GEMINI_MODEL` ke model Flash gratis yang masih aktif. Jangan diganti ke API berbayar.
+`GEMINI_MODEL` dicoba pertama. Kalau model itu penuh, tidak dikenali, atau jawabannya kosong, bot lanjut ke model teks berikutnya: Gemini 2.5 Flash, 2.5 Flash-Lite, 3 Flash, 3.1 Flash-Lite, 3.6 Flash, 3.5 Flash-Lite, 3.8 Flash, Gemma 4 26B, Gemma 4 31B, lalu Robotics ER 2. Setiap percobaan dibatasi 12 detik. Model embedding, TTS, Live, dan transkrip tidak dipakai karena tidak mengembalikan teks perjalanan.
 
-`GROQ_API_KEY` bersifat cadangan. Buat key gratis di [console.groq.com](https://console.groq.com). Bot baru memakai Groq jika Gemini gagal atau key Gemini kosong. Kalau keduanya kosong, bot meminta pengemudi mengirim ulang dan tidak mengarang data.
+`GROQ_API_KEY` adalah cadangan setelah seluruh Gemini gagal. Buat key gratis di [console.groq.com](https://console.groq.com). Urutannya: `openai/gpt-oss-20b` (atau `GROQ_MODEL`), lalu GPT-OSS 120B, GPT-OSS Safeguard 20B, dan Qwen 3.8 27B. Whisper, Orpheus, dan Prompt Guard tidak dipakai. Kalau kedua kunci kosong, bot meminta pengemudi mengirim ulang dan tidak mengarang data.
 
 AI hanya mengembalikan JSON: asal, tujuan, total integer, rincian opsional (tol, bensin, parkir, lain), tingkat keyakinan, dan daftar field yang belum ada. `700rb`, `700k`, dan `1,5jt` dijelaskan di instruksi AI, bukan dihardcode di bot.
 
