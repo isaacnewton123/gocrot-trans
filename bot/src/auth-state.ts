@@ -6,13 +6,12 @@ import {
   type AuthenticationState,
   type SignalDataSet,
 } from "@whiskeysockets/baileys";
-import { InputFile } from "node-appwrite/file";
-import { ids, storage } from "./appwrite.js";
-import { isNotFound } from "./errors.js";
+import { database } from "./mongo.js";
 
 type KeyBag = Record<string, Record<string, unknown>>;
 
 const DEBOUNCE_MS = 1500;
+const AUTH_ID = "baileys-auth";
 
 export type PersistedAuth = {
   state: AuthenticationState;
@@ -25,19 +24,19 @@ export async function loadAuthState(): Promise<PersistedAuth> {
   const keys: KeyBag = {};
   let creds: AuthenticationCreds = initAuthCreds();
 
-  try {
-    const downloaded = await storage.getFileDownload({
-      bucketId: ids.bucketId,
-      fileId: ids.authFileId,
-    });
-    const parsed = readSession(downloaded);
+  const db = await database();
+  const existing = await db.collection<{ _id: string; payload: string }>("wa_auth").findOne({ _id: AUTH_ID });
+  if (!existing?.payload) {
+    console.log("[wa] belum ada sesi. QR akan muncul di log.");
+  } else {
+    const parsed = JSON.parse(existing.payload, BufferJSON.reviver) as {
+      creds?: AuthenticationCreds;
+      keys?: KeyBag;
+    };
     if (!parsed.creds) throw new Error("Berkas sesi WhatsApp rusak");
     creds = parsed.creds;
     Object.assign(keys, parsed.keys ?? {});
-    console.log("[wa] sesi dimuat dari Appwrite Storage");
-  } catch (error) {
-    if (!isNotFound(error)) throw error;
-    console.log("[wa] belum ada sesi. QR akan muncul di log.");
+    console.log("[wa] sesi dimuat dari MongoDB");
   }
 
   const state: AuthenticationState = {
@@ -76,25 +75,16 @@ export async function loadAuthState(): Promise<PersistedAuth> {
 
   const persist = () => {
     if (!allowSave) return chain;
-    const payload = Buffer.from(
-      JSON.stringify({ creds: state.creds, keys }, BufferJSON.replacer),
-      "utf8",
-    );
+    const payload = JSON.stringify({ creds: state.creds, keys }, BufferJSON.replacer);
     chain = chain
       .then(async () => {
-        try {
-          await storage.deleteFile({ bucketId: ids.bucketId, fileId: ids.authFileId });
-        } catch (error) {
-          if (!isNotFound(error)) throw error;
-        }
-        await storage.createFile({
-          bucketId: ids.bucketId,
-          fileId: ids.authFileId,
-          file: InputFile.fromBuffer(payload, "baileys-auth.json"),
-        });
+        const store = await database();
+        await store
+          .collection<{ _id: string; payload: string }>("wa_auth")
+          .replaceOne({ _id: AUTH_ID }, { payload }, { upsert: true });
       })
       .catch((error: unknown) => {
-        console.error("[wa] gagal menyimpan sesi ke Appwrite", error);
+        console.error("[wa] gagal menyimpan sesi", error);
       });
     return chain;
   };
@@ -126,29 +116,10 @@ export async function loadAuthState(): Promise<PersistedAuth> {
       await chain;
       state.creds = initAuthCreds();
       for (const category of Object.keys(keys) as Array<keyof KeyBag>) delete keys[category];
-      try {
-        await storage.deleteFile({ bucketId: ids.bucketId, fileId: ids.authFileId });
-      } catch (error) {
-        if (!isNotFound(error)) throw error;
-      }
+      const store = await database();
+      await store.collection<{ _id: string; payload: string }>("wa_auth").deleteOne({ _id: AUTH_ID });
       allowSave = true;
       console.log("[wa] sesi dihapus. Scan QR baru.");
     },
   };
-}
-
-function readSession(downloaded: unknown): { creds?: AuthenticationCreds; keys?: KeyBag } {
-  return JSON.parse(sessionText(downloaded), BufferJSON.reviver) as {
-    creds?: AuthenticationCreds;
-    keys?: KeyBag;
-  };
-}
-
-function sessionText(downloaded: unknown): string {
-  if (typeof downloaded === "string") return downloaded;
-  if (downloaded instanceof ArrayBuffer) return Buffer.from(downloaded).toString("utf8");
-  if (ArrayBuffer.isView(downloaded)) {
-    return Buffer.from(downloaded.buffer, downloaded.byteOffset, downloaded.byteLength).toString("utf8");
-  }
-  return JSON.stringify(downloaded);
 }

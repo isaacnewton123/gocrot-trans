@@ -11,16 +11,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
-      - key: APPWRITE_ENDPOINT
+      - key: MONGODB_URI
         sync: false
-      - key: APPWRITE_PROJECT_ID
-        sync: false
-      - key: APPWRITE_API_KEY
-        sync: false
-      - key: APPWRITE_DATABASE_ID
-        value: main
-      - key: APPWRITE_BUCKET_ID
-        value: baileys-auth
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
@@ -30,4 +22,4 @@ services:
       - key: GROQ_MODEL
         value: openai/gpt-oss-20b
       - key: PUBLIC_VALIDATE_URL
-        sync: false
+        value: https://gocrot-trans.vercel.app/validasi

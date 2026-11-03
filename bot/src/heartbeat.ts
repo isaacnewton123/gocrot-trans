@@ -1,5 +1,4 @@
-import { ids, tablesDB } from "./appwrite.js";
-import { isNotFound } from "./errors.js";
+import { database } from "./mongo.js";
 
 let lastBeat = 0;
 
@@ -13,21 +12,7 @@ export function maybeBeat(): void {
 }
 
 async function touch(): Promise<void> {
-  const data = { at: new Date().toISOString() };
-  try {
-    await tablesDB.updateRow({
-      databaseId: ids.databaseId,
-      tableId: ids.meta,
-      rowId: "heartbeat",
-      data,
-    });
-  } catch (error) {
-    if (!isNotFound(error)) throw error;
-    await tablesDB.createRow({
-      databaseId: ids.databaseId,
-      tableId: ids.meta,
-      rowId: "heartbeat",
-      data,
-    });
-  }
+  const db = await database();
+  const at = new Date().toISOString();
+  await db.collection<{ _id: string; at: string }>("meta").replaceOne({ _id: "heartbeat" }, { at }, { upsert: true });
 }

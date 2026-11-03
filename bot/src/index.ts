@@ -1,5 +1,5 @@
 import express from "express";
-import { appwriteReady, config } from "./config.js";
+import { config, mongoReady } from "./config.js";
 import { maybeBeat } from "./heartbeat.js";
 import { flushAuth, startWhatsApp } from "./whatsapp.js";
 
@@ -8,7 +8,7 @@ app.disable("x-powered-by");
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ ok: true });
-  if (appwriteReady()) maybeBeat();
+  if (mongoReady()) maybeBeat();
 });
 
 app.get("/", (_req, res) => {
@@ -19,10 +19,8 @@ const server = app.listen(config.port, () => {
   console.log(`[http] mendengarkan port ${config.port}`);
 });
 
-if (!appwriteReady()) {
-  console.error(
-    "[boot] APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, dan APPWRITE_API_KEY wajib diisi. WhatsApp belum dijalankan.",
-  );
+if (!mongoReady()) {
+  console.error("[boot] MONGODB_URI wajib diisi. WhatsApp belum dijalankan.");
 } else {
   void startWhatsApp().catch((error: unknown) => {
     console.error("[boot] WhatsApp gagal dimulai", error);
