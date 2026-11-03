@@ -4,8 +4,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { errorText, executeFunction, ids, Query, tables } from "@/lib/appwrite";
-import type { GenerateResult, Series } from "@/lib/types";
+import { generateSeries, listSeries, setSeriesBlocked } from "@/lib/records";
+import type { Series } from "@/lib/types";
 
 export function SeriesPanel() {
   const [status, setStatus] = useState("available");
@@ -16,28 +16,20 @@ export function SeriesPanel() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function load(reset: boolean) {
-    const queries = [Query.limit(30)];
-    if (status === "all") queries.unshift(Query.orderDesc("sequence"));
-    else {
-      queries.unshift(Query.orderAsc("sequence"));
-      queries.unshift(Query.equal("status", status));
+  async function load(reset: boolean, after: string | null) {
+    const result = await listSeries({ status, after });
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
     }
-    const after = reset ? null : cursor;
-    if (after) queries.push(Query.cursorAfter(after));
-    const page = await tables().listRows<Series>({
-      databaseId: ids.databaseId,
-      tableId: ids.series,
-      queries,
-    });
-    setRows((current) => (reset ? page.rows : [...current, ...page.rows]));
-    setCursor(page.rows.length === 30 ? page.rows[page.rows.length - 1].$id : null);
+    setRows((current) => (reset ? result.rows : [...current, ...result.rows]));
+    setCursor(result.cursor);
   }
 
   useEffect(() => {
     setCursor(null);
-    void load(true).catch((error: unknown) => setMessage(errorText(error)));
-    // status is the only filter; load closes over the latest status via this effect.
+    void load(true, null);
+    // status is the only filter
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
@@ -50,58 +42,20 @@ export function SeriesPanel() {
     }
     setBusy(true);
     setMessage("Membuat nomor seri...");
-    let made = 0;
-    try {
-      let remaining = total;
-      let prefix = "";
-      let suffixStart = 0;
-      let sequenceStart = 0;
-      let first = "";
-      let last = "";
-      while (remaining > 0) {
-        const chunk = Math.min(200, remaining);
-        const result = await executeFunction<GenerateResult>({
-          action: "generate",
-          count: chunk,
-          prefix: prefix || undefined,
-          suffixStart: suffixStart || undefined,
-          sequenceStart: sequenceStart || undefined,
-        });
-        prefix = result.prefix;
-        suffixStart = result.nextSuffix;
-        sequenceStart = result.nextSequence;
-        if (!first) first = result.from;
-        last = result.to;
-        made += result.created;
-        remaining -= result.created;
-        setMessage(`Membuat ${made} dari ${total}...`);
-      }
-      setMessage(`Selesai: ${made} nomor, ${first} sampai ${last}.`);
+    const result = await generateSeries(total);
+    if (!result.ok) setMessage(result.error);
+    else {
+      setMessage(`Selesai: ${result.created} nomor, ${result.from} sampai ${result.to}.`);
       setStatus("available");
-      await load(true);
-    } catch (error) {
-      setMessage(
-        `${errorText(error)}${made ? ` Sebagian sudah dibuat (${made}). Cek daftar sebelum mengulang.` : ""}`,
-      );
-    } finally {
-      setBusy(false);
+      await load(true, null);
     }
+    setBusy(false);
   }
 
   async function setBlocked(row: Series, blocked: boolean) {
-    try {
-      await tables().updateRow({
-        databaseId: ids.databaseId,
-        tableId: ids.series,
-        rowId: row.$id,
-        data: blocked
-          ? { status: "blocked", blockedReason: reason || "Diblokir admin" }
-          : { status: "available", blockedReason: "" },
-      });
-      await load(true);
-    } catch (error) {
-      setMessage(errorText(error));
-    }
+    const result = await setSeriesBlocked({ id: row.id, blocked, reason });
+    if (!result.ok) setMessage(result.error);
+    else await load(true, null);
   }
 
   return (
@@ -139,7 +93,7 @@ export function SeriesPanel() {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.$id} className="border-b last:border-0">
+              <tr key={row.id} className="border-b last:border-0">
                 <td className="p-3 font-mono text-base">{row.code}</td>
                 <td className="p-3">
                   <Badge variant={row.status === "used" ? "valid" : row.status === "blocked" ? "warn" : "default"}>
@@ -164,7 +118,7 @@ export function SeriesPanel() {
         </table>
       </div>
       {cursor && (
-        <Button variant="outline" onClick={() => void load(false).catch((error: unknown) => setMessage(errorText(error)))}>
+        <Button variant="outline" onClick={() => void load(false, cursor)}>
           Muat lagi
         </Button>
       )}

@@ -3,15 +3,13 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { errorText, ids, Query, tables } from "@/lib/appwrite";
-import { download, formatWhen, jakartaEnd, jakartaStart, normalizeSeries, rupiah, toCsv, toExcelXml } from "@/lib/format";
-import type { Driver, Trip } from "@/lib/types";
-
-type Filters = { q: string; driver: string; from: string; to: string };
+import { download, formatWhen, rupiah, toCsv, toExcelXml } from "@/lib/format";
+import { exportTrips, listDrivers, listTrips } from "@/lib/records";
+import type { Driver, Trip, TripFilters } from "@/lib/types";
 
 export function TripsPanel() {
-  const [filters, setFilters] = useState<Filters>({ q: "", driver: "", from: "", to: "" });
-  const [applied, setApplied] = useState<Filters>(filters);
+  const [filters, setFilters] = useState<TripFilters>({ q: "", driver: "", from: "", to: "" });
+  const [applied, setApplied] = useState<TripFilters>(filters);
   const [rows, setRows] = useState<Trip[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -19,32 +17,24 @@ export function TripsPanel() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void tables()
-      .listRows<Driver>({
-        databaseId: ids.databaseId,
-        tableId: ids.drivers,
-        queries: [Query.limit(100)],
-      })
-      .then((page) => setDrivers([...page.rows].sort((a, b) => a.name.localeCompare(b.name, "id"))))
-      .catch((error: unknown) => setMessage(errorText(error)));
+    void listDrivers().then((result) => {
+      if (result.ok) setDrivers(result.rows);
+      else setMessage(result.error);
+    });
   }, []);
 
-  async function load(next: Filters, reset: boolean, after: string | null) {
-    const queries = buildQueries(next);
-    if (after) queries.push(Query.cursorAfter(after));
-    const page = await tables().listRows<Trip>({
-      databaseId: ids.databaseId,
-      tableId: ids.trips,
-      queries,
-    });
-    const visible = page.rows.filter((trip) => matches(trip, next));
-    setRows((current) => (reset ? visible : [...current, ...visible]));
-    setCursor(page.rows.length >= 25 ? page.rows[page.rows.length - 1].$id : null);
+  async function load(next: TripFilters, reset: boolean, after: string | null) {
+    const result = await listTrips({ filters: next, after });
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setRows((current) => (reset ? result.rows : [...current, ...result.rows]));
+    setCursor(result.cursor);
   }
 
   useEffect(() => {
-    void load(applied, true, null).catch((error: unknown) => setMessage(errorText(error)));
-    // reload when the applied filter changes
+    void load(applied, true, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applied]);
 
@@ -56,25 +46,12 @@ export function TripsPanel() {
   async function exportRows(kind: "csv" | "xls") {
     setBusy(true);
     setMessage("");
-    try {
-      const collected: Trip[] = [];
-      let after: string | null = null;
-      for (let page = 0; page < 20 && collected.length < 1000; page += 1) {
-        const queries = buildQueries(applied);
-        queries[queries.length - 1] = Query.limit(50);
-        if (after) queries.push(Query.cursorAfter(after));
-        const result = await tables().listRows<Trip>({
-          databaseId: ids.databaseId,
-          tableId: ids.trips,
-          queries,
-        });
-        collected.push(...result.rows.filter((trip) => matches(trip, applied)));
-        if (result.rows.length < 50) break;
-        after = result.rows[result.rows.length - 1].$id;
-      }
+    const result = await exportTrips(applied);
+    if (!result.ok) setMessage(result.error);
+    else {
       const header = ["Waktu", "Nomor seri", "Pengemudi", "WhatsApp", "Dari", "Ke", "Total", "Tol", "Bensin", "Parkir", "Lain"];
-      const body = collected.map((trip) => [
-        formatWhen(trip.confirmedAt || trip.$createdAt),
+      const body = result.rows.map((trip) => [
+        formatWhen(trip.confirmedAt),
         trip.seriesCode,
         trip.driverName,
         trip.driverPhone,
@@ -88,12 +65,9 @@ export function TripsPanel() {
       ]);
       if (kind === "csv") download("perjalanan.csv", toCsv([header, ...body]), "text/csv;charset=utf-8");
       else download("perjalanan.xls", toExcelXml(header, body), "application/vnd.ms-excel");
-      setMessage(`${collected.length} perjalanan diunduh.`);
-    } catch (error) {
-      setMessage(errorText(error));
-    } finally {
-      setBusy(false);
+      setMessage(`${result.rows.length} perjalanan diunduh.`);
     }
+    setBusy(false);
   }
 
   return (
@@ -107,7 +81,7 @@ export function TripsPanel() {
         >
           <option value="">Semua pengemudi</option>
           {drivers.map((driver) => (
-            <option key={driver.$id} value={driver.phone}>
+            <option key={driver.id} value={driver.phone}>
               {driver.name}
             </option>
           ))}
@@ -127,7 +101,7 @@ export function TripsPanel() {
       {message && <p className="text-sm font-semibold">{message}</p>}
       <div className="space-y-3 md:hidden">
         {rows.map((trip) => (
-          <article key={trip.$id} className="rounded-xl border bg-card p-4">
+          <article key={trip.id} className="rounded-xl border bg-card p-4">
             <p className="font-mono text-lg font-bold">{trip.seriesCode}</p>
             <p className="mt-1">{trip.origin} → {trip.destination}</p>
             <p className="font-semibold">{rupiah(trip.total)}</p>
@@ -148,7 +122,7 @@ export function TripsPanel() {
           </thead>
           <tbody>
             {rows.map((trip) => (
-              <tr key={trip.$id} className="border-b last:border-0">
+              <tr key={trip.id} className="border-b last:border-0">
                 <td className="p-3 font-mono">{trip.seriesCode}</td>
                 <td className="p-3">{trip.origin} → {trip.destination}</td>
                 <td className="p-3">{rupiah(trip.total)}</td>
@@ -161,32 +135,12 @@ export function TripsPanel() {
       </div>
       {!rows.length && <p className="text-muted-foreground">Tidak ada perjalanan.</p>}
       {cursor && (
-        <Button variant="outline" onClick={() => void load(applied, false, cursor).catch((error: unknown) => setMessage(errorText(error)))}>
+        <Button variant="outline" onClick={() => void load(applied, false, cursor)}>
           Muat lagi
         </Button>
       )}
     </div>
   );
-}
-
-function buildQueries(filters: Filters): string[] {
-  const term = filters.q.trim();
-  const code = normalizeSeries(term);
-  if (/^[A-Z0-9]{4}-\d{4}$/.test(code)) return [Query.equal("seriesCode", code), Query.limit(25)];
-  if (term.length >= 3) return [Query.search("searchText", term), Query.limit(25)];
-  const queries = [Query.orderDesc("$createdAt"), Query.limit(25)];
-  if (filters.driver) queries.unshift(Query.equal("driverPhone", filters.driver));
-  if (filters.from) queries.push(Query.greaterThanEqual("$createdAt", jakartaStart(filters.from)));
-  if (filters.to) queries.push(Query.lessThanEqual("$createdAt", jakartaEnd(filters.to)));
-  return queries;
-}
-
-function matches(trip: Trip, filters: Filters): boolean {
-  if (filters.driver && trip.driverPhone !== filters.driver) return false;
-  const when = new Date(trip.confirmedAt || trip.$createdAt).getTime();
-  if (filters.from && when < new Date(jakartaStart(filters.from)).getTime()) return false;
-  if (filters.to && when > new Date(jakartaEnd(filters.to)).getTime()) return false;
-  return true;
 }
 
 function money(value: number | null | undefined): string {

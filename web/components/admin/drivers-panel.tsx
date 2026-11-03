@@ -3,8 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { errorText, ids, isConflict, Query, tables } from "@/lib/appwrite";
-import { normalizePhone } from "@/lib/phone";
+import { addDriver, listDrivers, updateDriver } from "@/lib/records";
 import type { Driver } from "@/lib/types";
 
 export function DriversPanel() {
@@ -15,57 +14,37 @@ export function DriversPanel() {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const page = await tables().listRows<Driver>({
-      databaseId: ids.databaseId,
-      tableId: ids.drivers,
-      queries: [Query.limit(100)],
-    });
-    setRows([...page.rows].sort((a, b) => a.name.localeCompare(b.name, "id")));
+    const result = await listDrivers();
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setRows(result.rows);
   }
 
   useEffect(() => {
-    void load().catch((error: unknown) => setMessage(errorText(error)));
+    void load();
   }, []);
 
   async function add(event: FormEvent) {
     event.preventDefault();
-    const normalized = normalizePhone(phone);
-    if (!normalized || !name.trim()) {
-      setMessage("Nama dan nomor WhatsApp belum benar.");
-      return;
-    }
     setBusy(true);
     setMessage("");
-    try {
-      await tables().createRow({
-        databaseId: ids.databaseId,
-        tableId: ids.drivers,
-        rowId: normalized,
-        data: { phone: normalized, name: name.trim(), active: true, note: "" },
-      });
+    const result = await addDriver({ name, phone });
+    if (!result.ok) setMessage(result.error);
+    else {
       setName("");
       setPhone("");
       await load();
-    } catch (error) {
-      setMessage(isConflict(error) ? "Nomor ini sudah terdaftar." : errorText(error));
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   }
 
   async function save(driver: Driver, nextName: string, active: boolean) {
     setMessage("");
-    try {
-      await tables().updateRow({
-        databaseId: ids.databaseId,
-        tableId: ids.drivers,
-        rowId: driver.$id,
-        data: { name: nextName.trim(), active, phone: driver.phone },
-      });
-      await load();
-    } catch (error) {
-      setMessage(errorText(error));
-    }
+    const result = await updateDriver({ id: driver.id, name: nextName, active });
+    if (!result.ok) setMessage(result.error);
+    else await load();
   }
 
   return (
@@ -80,7 +59,7 @@ export function DriversPanel() {
       {message && <p className="text-sm font-semibold text-destructive">{message}</p>}
       <div className="space-y-3">
         {rows.map((driver) => (
-          <DriverRow key={driver.$id} driver={driver} onSave={save} />
+          <DriverRow key={driver.id} driver={driver} onSave={save} />
         ))}
         {!rows.length && <p className="text-muted-foreground">Belum ada pengemudi.</p>}
       </div>

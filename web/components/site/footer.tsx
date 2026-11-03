@@ -16,7 +16,7 @@ export function SiteFooter() {
         </div>
         <div className="flex gap-5 text-sm font-semibold">
           <Link href="/validasi">Validasi kwitansi</Link>
-          <Link href="/admin/login" className="text-muted-foreground">
+          <Link href="/admin/dashboard" className="text-muted-foreground">
             Admin
           </Link>
         </div>

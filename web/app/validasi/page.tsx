@@ -8,9 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { envReady } from "@/lib/env";
-import { errorText, executeFunction } from "@/lib/appwrite";
 import { formatWhen, normalizeSeries, rupiah } from "@/lib/format";
+import { validateReceipt } from "@/lib/records";
 import type { PublicTrip, Validation } from "@/lib/types";
 
 export default function ValidasiPage() {
@@ -30,10 +29,11 @@ export default function ValidasiPage() {
     }
     setBusy(true);
     try {
-      const data = await executeFunction<Validation>({ action: "validate", code: series });
-      setResult(data);
+      const data = await validateReceipt(series);
+      if (!data.ok) setError(data.error);
+      else setResult(data);
     } catch (err) {
-      setError(errorText(err));
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
     } finally {
       setBusy(false);
     }
@@ -45,12 +45,6 @@ export default function ValidasiPage() {
       <main className="mx-auto flex min-h-[70vh] max-w-lg flex-col px-5 py-12">
       <h1 className="font-serif text-4xl">Validasi kwitansi</h1>
       <p className="mt-2 text-muted-foreground">Ketik nomor seri yang tertulis di kertas, misalnya A7K2-0001.</p>
-
-      {!envReady && (
-        <p className="mt-6 rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-950">
-          Konfigurasi Appwrite belum diisi di environment situs.
-        </p>
-      )}
 
       <form onSubmit={onSubmit} className="mt-6 space-y-3">
         <Label htmlFor="seri">Nomor seri</Label>
@@ -64,7 +58,7 @@ export default function ValidasiPage() {
           placeholder="A7K2-0001"
           className="h-16 font-mono text-2xl uppercase tracking-wide"
         />
-        <Button type="submit" size="lg" className="w-full" disabled={busy || !envReady}>
+        <Button type="submit" size="lg" className="w-full" disabled={busy}>
           {busy ? "Memeriksa..." : "Periksa"}
         </Button>
       </form>

@@ -1,13 +1,13 @@
-import type { Models } from "appwrite";
-
-export type Driver = Models.Row & {
+export type Driver = {
+  id: string;
   phone: string;
   name: string;
   active: boolean;
   note?: string;
 };
 
-export type Trip = Models.Row & {
+export type Trip = {
+  id: string;
   seriesCode: string;
   driverPhone: string;
   driverName: string;
@@ -22,7 +22,8 @@ export type Trip = Models.Row & {
   sourceText?: string;
 };
 
-export type Series = Models.Row & {
+export type Series = {
+  id: string;
   code: string;
   prefix: string;
   suffix: number;
@@ -33,10 +34,12 @@ export type Series = Models.Row & {
   usedAt?: string;
 };
 
-export type ChatLog = Models.Row & {
+export type ChatLog = {
+  id: string;
   phone: string;
   direction: "in" | "out";
   body: string;
+  createdAt: string;
 };
 
 export type PublicTrip = {
@@ -69,4 +72,11 @@ export type GenerateResult = {
   to: string;
   nextSuffix: number;
   nextSequence: number;
+};
+
+export type TripFilters = {
+  q: string;
+  driver: string;
+  from: string;
+  to: string;
 };

@@ -26,7 +26,7 @@ export function SiteHeader() {
               {link.label}
             </Link>
           ))}
-          <Link href="/admin/login" className="text-muted-foreground hover:text-foreground">
+          <Link href="/admin/dashboard" className="text-muted-foreground hover:text-foreground">
             Admin
           </Link>
         </nav>
@@ -51,7 +51,7 @@ export function SiteHeader() {
               {link.label}
             </Link>
           ))}
-          <Link href="/admin/login" className="rounded-md px-2 py-2 text-sm font-semibold text-muted-foreground" onClick={() => setOpen(false)}>
+          <Link href="/admin/dashboard" className="rounded-md px-2 py-2 text-sm font-semibold text-muted-foreground" onClick={() => setOpen(false)}>
             Admin
           </Link>
         </nav>
